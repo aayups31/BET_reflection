@@ -9,10 +9,10 @@ type Track = {
 };
 
 const TRACKS: Track[] = [
+  { title: 'Can You Hear The Music', artist: 'Hans Zimmer', file: '/audio/can-you-hear-the-music.mp3' },
+  { title: 'Cornfield Chase', artist: 'Hans Zimmer', file: '/audio/cornfield-chase.mp3' },
   { title: 'Time', artist: 'Hans Zimmer', file: '/audio/time.mp3' },
   { title: 'No Time for Caution', artist: 'Hans Zimmer', file: '/audio/no-time-for-caution.mp3' },
-  { title: 'Cornfield Chase', artist: 'Hans Zimmer', file: '/audio/cornfield-chase.mp3' },
-  { title: 'Can You Hear The Music', artist: 'Hans Zimmer', file: '/audio/can-you-hear-the-music.mp3' },
 ];
 
 export function Soundtrack() {
