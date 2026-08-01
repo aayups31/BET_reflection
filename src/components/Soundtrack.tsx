@@ -6,16 +6,41 @@ type Track = {
   title: string;
   artist: string;
   file: string;
+  cueIn?: number;
+  cueOut?: number;
 };
 
 const CROSSFADE_MS = 6000;
 const CROSSFADE_SECONDS = CROSSFADE_MS / 1000;
 
 const TRACKS: Track[] = [
-  { title: 'Can You Hear The Music', artist: 'Hans Zimmer', file: '/audio/can-you-hear-the-music.mp3' },
-  { title: 'Cornfield Chase', artist: 'Hans Zimmer', file: '/audio/cornfield-chase.mp3' },
-  { title: 'No Time for Caution', artist: 'Hans Zimmer', file: '/audio/no-time-for-caution.mp3' },
-  { title: 'Time', artist: 'Hans Zimmer', file: '/audio/time.mp3' },
+  {
+    title: 'Can You Hear The Music',
+    artist: 'Hans Zimmer',
+    file: '/audio/can-you-hear-the-music.mp3',
+    cueOut: 102,
+  },
+  {
+    title: 'Cornfield Chase',
+    artist: 'Hans Zimmer',
+    file: '/audio/cornfield-chase.mp3',
+    cueIn: 34,
+    cueOut: 120,
+  },
+  {
+    title: 'No Time for Caution',
+    artist: 'Hans Zimmer',
+    file: '/audio/no-time-for-caution.mp3',
+    cueIn: 60,
+    cueOut: 238.5,
+  },
+  {
+    title: 'Time',
+    artist: 'Hans Zimmer',
+    file: '/audio/time.mp3',
+    cueIn: 5,
+    cueOut: 274.5,
+  },
 ];
 
 export function Soundtrack() {
@@ -40,16 +65,30 @@ export function Soundtrack() {
     deck === 0 ? deckARef.current : deckBRef.current
   ), []);
 
+  const seekToCueIn = useCallback((audio: HTMLAudioElement, deck: 0 | 1, trackIndex: number) => {
+    const seek = () => {
+      if (deckTracks.current[deck] !== trackIndex) return;
+      try {
+        audio.currentTime = TRACKS[trackIndex].cueIn ?? 0;
+      } catch {
+        // The metadata listener below will retry once the browser can seek.
+      }
+    };
+
+    if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) seek();
+    else audio.addEventListener('loadedmetadata', seek, { once: true });
+  }, []);
+
   const primeDeck = useCallback((deck: 0 | 1, trackIndex: number, volume: number) => {
     const audio = getDeck(deck);
     if (!audio) return;
     audio.pause();
     audio.src = TRACKS[trackIndex].file;
-    audio.currentTime = 0;
     audio.volume = volume;
-    audio.load();
     deckTracks.current[deck] = trackIndex;
-  }, [getDeck]);
+    audio.load();
+    seekToCueIn(audio, deck, trackIndex);
+  }, [getDeck, seekToCueIn]);
 
   const stopFadeFrame = useCallback(() => {
     transitionId.current += 1;
@@ -89,7 +128,7 @@ export function Soundtrack() {
     setMessage(`${TRACKS[nextIndex].title} is ready.`);
   }, [primeDeck, stopFadeFrame]);
 
-  const crossfadeTo = useCallback(async (nextIndex: number) => {
+  const crossfadeTo = useCallback(async (nextIndex: number, startImmediately = false) => {
     if (crossfading.current || !continuePlaying.current) return;
     const outgoingDeck = activeDeck.current;
     const incomingDeck = (1 - outgoingDeck) as 0 | 1;
@@ -107,13 +146,9 @@ export function Soundtrack() {
       incoming.src = TRACKS[nextIndex].file;
       incoming.load();
     }
-    try {
-      incoming.currentTime = 0;
-    } catch {
-      // Browsers can reject seeking until the newly selected file has metadata.
-    }
-    incoming.volume = 0;
     deckTracks.current[incomingDeck] = nextIndex;
+    seekToCueIn(incoming, incomingDeck, nextIndex);
+    incoming.volume = startImmediately ? 1 : 0;
     currentIndex.current = nextIndex;
     setIndex(nextIndex);
     setMessage(`Crossfading into ${TRACKS[nextIndex].title}.`);
@@ -125,10 +160,10 @@ export function Soundtrack() {
       crossfading.current = false;
       outgoing.pause();
       outgoing.src = TRACKS[nextIndex].file;
-      outgoing.currentTime = 0;
       outgoing.volume = 1;
-      outgoing.load();
       deckTracks.current[outgoingDeck] = nextIndex;
+      outgoing.load();
+      seekToCueIn(outgoing, outgoingDeck, nextIndex);
       currentIndex.current = nextIndex;
       setIndex(nextIndex);
       try {
@@ -148,6 +183,18 @@ export function Soundtrack() {
 
     activeDeck.current = incomingDeck;
     setPlaying(true);
+
+    if (startImmediately) {
+      outgoing.pause();
+      outgoing.volume = 0;
+      incoming.volume = 1;
+      fadeFrame.current = null;
+      crossfading.current = false;
+      primeDeck(outgoingDeck, (nextIndex + 1) % TRACKS.length, 0);
+      setMessage('Playing continuously across every chapter.');
+      return;
+    }
+
     const startedAt = performance.now();
     const outgoingStartVolume = outgoing.volume;
 
@@ -174,7 +221,7 @@ export function Soundtrack() {
     };
 
     fadeFrame.current = requestAnimationFrame(updateFade);
-  }, [getDeck, primeDeck]);
+  }, [getDeck, primeDeck, seekToCueIn]);
 
   useEffect(() => {
     primeDeck(0, 0, 1);
@@ -251,15 +298,17 @@ export function Soundtrack() {
     if (deck !== activeDeck.current || crossfading.current || !continuePlaying.current) return;
     const audio = getDeck(deck);
     if (!audio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
-    const remaining = audio.duration - audio.currentTime;
-    if (remaining <= CROSSFADE_SECONDS + 0.15 && remaining > 0) {
+    const trackEnd = Math.min(TRACKS[deckTracks.current[deck]].cueOut ?? audio.duration, audio.duration);
+    const remaining = trackEnd - audio.currentTime;
+    if (remaining <= CROSSFADE_SECONDS + 0.15) {
       void crossfadeTo((currentIndex.current + 1) % TRACKS.length);
     }
   }
 
   function handleEnded(deck: 0 | 1) {
     if (deck === activeDeck.current && !crossfading.current && continuePlaying.current) {
-      void crossfadeTo((currentIndex.current + 1) % TRACKS.length);
+      // If a browser throttled the pre-end update, never fade up from silence.
+      void crossfadeTo((currentIndex.current + 1) % TRACKS.length, true);
     }
   }
 
