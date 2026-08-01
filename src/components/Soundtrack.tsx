@@ -21,21 +21,21 @@ const TRACKS: Track[] = [
     title: 'Cornfield Chase',
     artist: 'Hans Zimmer',
     file: '/audio/cornfield-chase.mp3',
-    cueIn: 24,
+    
     
   },
   {
     title: 'No Time for Caution',
     artist: 'Hans Zimmer',
     file: '/audio/no-time-for-caution.mp3',
-    cueIn: 30,
+    
     
   },
   {
     title: 'Time',
     artist: 'Hans Zimmer',
     file: '/audio/time.mp3',
-    cueIn: 5,
+    
     
   },
 ];
