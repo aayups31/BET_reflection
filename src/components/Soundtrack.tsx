@@ -10,9 +10,6 @@ type Track = {
   cueOut?: number;
 };
 
-const CROSSFADE_MS = 6000;
-const CROSSFADE_SECONDS = CROSSFADE_MS / 1000;
-
 const TRACKS: Track[] = [
   {
     title: 'Can You Hear The Music',
@@ -50,13 +47,11 @@ export function Soundtrack() {
   const deckTracks = useRef<[number, number]>([0, 1]);
   const currentIndex = useRef(0);
   const continuePlaying = useRef(false);
-  const crossfading = useRef(false);
-  const fadeFrame = useRef<number | null>(null);
-  const transitionId = useRef(0);
+  const switchId = useRef(0);
   const [open, setOpen] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [index, setIndex] = useState(0);
-  const [message, setMessage] = useState('Four bundled soundtracks with six-second crossfades.');
+  const [message, setMessage] = useState('Four bundled soundtracks with clean, direct transitions.');
 
   const track = TRACKS[index];
   const title = useMemo(() => `${track.title} — ${track.artist}`, [track]);
@@ -90,34 +85,8 @@ export function Soundtrack() {
     seekToCueIn(audio, deck, trackIndex);
   }, [getDeck, seekToCueIn]);
 
-  const stopFadeFrame = useCallback(() => {
-    transitionId.current += 1;
-    if (fadeFrame.current !== null) cancelAnimationFrame(fadeFrame.current);
-    fadeFrame.current = null;
-    crossfading.current = false;
-  }, []);
-
-  const retargetActiveFade = useCallback(() => {
-    const deckA = getDeck(0);
-    const deckB = getDeck(1);
-    if (!deckA || !deckB) return;
-
-    const keeperDeck: 0 | 1 = deckA.volume >= deckB.volume ? 0 : 1;
-    const discardedDeck = (1 - keeperDeck) as 0 | 1;
-    const keeper = getDeck(keeperDeck);
-    const discarded = getDeck(discardedDeck);
-
-    stopFadeFrame();
-    if (discarded) {
-      discarded.pause();
-      discarded.volume = 0;
-    }
-    if (keeper) keeper.volume = 1;
-    activeDeck.current = keeperDeck;
-  }, [getDeck, stopFadeFrame]);
-
   const selectWithoutPlayback = useCallback((nextIndex: number) => {
-    stopFadeFrame();
+    switchId.current += 1;
     const selectedDeck = activeDeck.current;
     const inactiveDeck = (1 - selectedDeck) as 0 | 1;
     primeDeck(selectedDeck, nextIndex, 1);
@@ -126,21 +95,27 @@ export function Soundtrack() {
     setIndex(nextIndex);
     setPlaying(false);
     setMessage(`${TRACKS[nextIndex].title} is ready.`);
-  }, [primeDeck, stopFadeFrame]);
+  }, [primeDeck]);
 
-  const crossfadeTo = useCallback(async (nextIndex: number, startImmediately = false) => {
-    if (crossfading.current || !continuePlaying.current) return;
+  const switchTo = useCallback(async (nextIndex: number) => {
+    if (!continuePlaying.current) {
+      selectWithoutPlayback(nextIndex);
+      return;
+    }
+
+    const transition = switchId.current + 1;
+    switchId.current = transition;
     const outgoingDeck = activeDeck.current;
     const incomingDeck = (1 - outgoingDeck) as 0 | 1;
     const outgoing = getDeck(outgoingDeck);
     const incoming = getDeck(incomingDeck);
     if (!outgoing || !incoming) return;
 
-    crossfading.current = true;
-    const fadeId = transitionId.current + 1;
-    transitionId.current = fadeId;
     const alreadyPreloaded = deckTracks.current[incomingDeck] === nextIndex
       && incoming.src.endsWith(TRACKS[nextIndex].file);
+
+    outgoing.pause();
+    outgoing.volume = 0;
     incoming.pause();
     if (!alreadyPreloaded) {
       incoming.src = TRACKS[nextIndex].file;
@@ -148,86 +123,35 @@ export function Soundtrack() {
     }
     deckTracks.current[incomingDeck] = nextIndex;
     seekToCueIn(incoming, incomingDeck, nextIndex);
-    incoming.volume = startImmediately ? 1 : 0;
+    incoming.volume = 1;
+    activeDeck.current = incomingDeck;
     currentIndex.current = nextIndex;
     setIndex(nextIndex);
-    setMessage(`Crossfading into ${TRACKS[nextIndex].title}.`);
+    setMessage(`Playing ${TRACKS[nextIndex].title}.`);
 
     try {
       await incoming.play();
     } catch {
-      if (fadeId !== transitionId.current) return;
-      crossfading.current = false;
-      outgoing.pause();
-      outgoing.src = TRACKS[nextIndex].file;
-      outgoing.volume = 1;
-      deckTracks.current[outgoingDeck] = nextIndex;
-      outgoing.load();
-      seekToCueIn(outgoing, outgoingDeck, nextIndex);
-      currentIndex.current = nextIndex;
-      setIndex(nextIndex);
-      try {
-        await outgoing.play();
-        setPlaying(true);
-        setMessage(`Playing ${TRACKS[nextIndex].title}.`);
-      } catch {
-        continuePlaying.current = false;
-        setPlaying(false);
-        setOpen(true);
-        setMessage('Press play to continue the bundled soundtrack.');
-      }
+      if (transition !== switchId.current) return;
+      continuePlaying.current = false;
+      setPlaying(false);
+      setOpen(true);
+      setMessage('Press play to continue the bundled soundtrack.');
       return;
     }
 
-    if (fadeId !== transitionId.current) return;
-
-    activeDeck.current = incomingDeck;
+    if (transition !== switchId.current) return;
     setPlaying(true);
-
-    if (startImmediately) {
-      outgoing.pause();
-      outgoing.volume = 0;
-      incoming.volume = 1;
-      fadeFrame.current = null;
-      crossfading.current = false;
-      primeDeck(outgoingDeck, (nextIndex + 1) % TRACKS.length, 0);
-      setMessage('Playing continuously across every chapter.');
-      return;
-    }
-
-    const startedAt = performance.now();
-    const outgoingStartVolume = outgoing.volume;
-
-    const updateFade = (now: number) => {
-      if (fadeId !== transitionId.current) return;
-      const progress = Math.min(1, (now - startedAt) / CROSSFADE_MS);
-      outgoing.volume = Math.max(0, Math.cos(progress * Math.PI * 0.5) * outgoingStartVolume);
-      incoming.volume = Math.min(1, Math.sin(progress * Math.PI * 0.5));
-
-      if (progress < 1 && continuePlaying.current) {
-        fadeFrame.current = requestAnimationFrame(updateFade);
-        return;
-      }
-
-      outgoing.pause();
-      outgoing.volume = 0;
-      incoming.volume = 1;
-      fadeFrame.current = null;
-      crossfading.current = false;
-      primeDeck(outgoingDeck, (nextIndex + 1) % TRACKS.length, 0);
-      if (continuePlaying.current) {
-        setMessage('Playing with six-second crossfades across every chapter.');
-      }
-    };
-
-    fadeFrame.current = requestAnimationFrame(updateFade);
-  }, [getDeck, primeDeck, seekToCueIn]);
+    primeDeck(outgoingDeck, (nextIndex + 1) % TRACKS.length, 0);
+  }, [getDeck, primeDeck, seekToCueIn, selectWithoutPlayback]);
 
   useEffect(() => {
     primeDeck(0, 0, 1);
     primeDeck(1, 1, 0);
-    return stopFadeFrame;
-  }, [primeDeck, stopFadeFrame]);
+    return () => {
+      switchId.current += 1;
+    };
+  }, [primeDeck]);
 
   useEffect(() => {
     const startWithExperience = () => {
@@ -237,7 +161,7 @@ export function Soundtrack() {
       audio.volume = 1;
       void audio.play().then(() => {
         setPlaying(true);
-        setMessage('Playing with six-second crossfades across every chapter.');
+        setMessage('Playing continuously across every chapter.');
       }).catch(() => {
         continuePlaying.current = false;
         setPlaying(false);
@@ -254,18 +178,9 @@ export function Soundtrack() {
     if (!audio) return;
 
     if (playing) {
-      stopFadeFrame();
+      switchId.current += 1;
       continuePlaying.current = false;
-      const inactiveDeck = (1 - activeDeck.current) as 0 | 1;
-      const inactive = getDeck(inactiveDeck);
       audio.pause();
-      audio.volume = 1;
-      if (inactive) {
-        inactive.pause();
-        inactive.volume = 0;
-      }
-      setIndex(deckTracks.current[activeDeck.current]);
-      currentIndex.current = deckTracks.current[activeDeck.current];
       setPlaying(false);
       setMessage('Soundtrack paused.');
       return;
@@ -276,7 +191,7 @@ export function Soundtrack() {
       audio.volume = 1;
       await audio.play();
       setPlaying(true);
-      setMessage('Playing with six-second crossfades across every chapter.');
+      setMessage('Playing continuously across every chapter.');
     } catch {
       continuePlaying.current = false;
       setOpen(true);
@@ -286,35 +201,28 @@ export function Soundtrack() {
 
   function move(direction: number) {
     const nextIndex = (currentIndex.current + direction + TRACKS.length) % TRACKS.length;
-    if (continuePlaying.current) {
-      if (crossfading.current) retargetActiveFade();
-      void crossfadeTo(nextIndex);
-      return;
-    }
-    selectWithoutPlayback(nextIndex);
+    void switchTo(nextIndex);
   }
 
   function handleTimeUpdate(deck: 0 | 1) {
-    if (deck !== activeDeck.current || crossfading.current || !continuePlaying.current) return;
+    if (deck !== activeDeck.current || !continuePlaying.current) return;
     const audio = getDeck(deck);
     if (!audio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
     const trackEnd = Math.min(TRACKS[deckTracks.current[deck]].cueOut ?? audio.duration, audio.duration);
-    const remaining = trackEnd - audio.currentTime;
-    if (remaining <= CROSSFADE_SECONDS + 0.15) {
-      void crossfadeTo((currentIndex.current + 1) % TRACKS.length);
+    if (audio.currentTime >= trackEnd) {
+      void switchTo((currentIndex.current + 1) % TRACKS.length);
     }
   }
 
   function handleEnded(deck: 0 | 1) {
-    if (deck === activeDeck.current && !crossfading.current && continuePlaying.current) {
-      // If a browser throttled the pre-end update, never fade up from silence.
-      void crossfadeTo((currentIndex.current + 1) % TRACKS.length, true);
+    if (deck === activeDeck.current && continuePlaying.current) {
+      void switchTo((currentIndex.current + 1) % TRACKS.length);
     }
   }
 
   function handleError(deck: 0 | 1) {
     if (deck !== activeDeck.current) return;
-    stopFadeFrame();
+    switchId.current += 1;
     continuePlaying.current = false;
     setPlaying(false);
     setMessage(`Could not load ${TRACKS[deckTracks.current[deck]].file}.`);
