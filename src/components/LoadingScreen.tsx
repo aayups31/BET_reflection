@@ -6,8 +6,8 @@ export const EXPERIENCE_START_EVENT = 'bet:experience-start';
 const AUDIO_FILES = [
   '/audio/can-you-hear-the-music.mp3',
   '/audio/cornfield-chase.mp3',
-  '/audio/time.mp3',
   '/audio/no-time-for-caution.mp3',
+  '/audio/time.mp3',
 ];
 
 type WirePoint = { x: number; y: number };
@@ -246,7 +246,6 @@ export function LoadingScreen() {
       <div className="loading-screen__content">
         <div className="loading-screen__intro">
           <p className="loading-screen__mark">AAYU / BET REFLECTION</p>
-          
         </div>
         <div className="loading-screen__hero">
           <p className="loading-screen__promise">04 cinematic soundtracks</p>

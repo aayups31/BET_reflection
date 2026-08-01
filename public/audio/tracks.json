@@ -1,13 +1,8 @@
 [
   {
-    "title": "Time",
+    "title": "Can You Hear The Music",
     "artist": "Hans Zimmer",
-    "filename": "time.mp3"
-  },
-  {
-    "title": "No Time for Caution",
-    "artist": "Hans Zimmer",
-    "filename": "no-time-for-caution.mp3"
+    "filename": "can-you-hear-the-music.mp3"
   },
   {
     "title": "Cornfield Chase",
@@ -15,8 +10,13 @@
     "filename": "cornfield-chase.mp3"
   },
   {
-    "title": "Can You Hear The Music",
+    "title": "No Time for Caution",
     "artist": "Hans Zimmer",
-    "filename": "can-you-hear-the-music.mp3"
+    "filename": "no-time-for-caution.mp3"
+  },
+  {
+    "title": "Time",
+    "artist": "Hans Zimmer",
+    "filename": "time.mp3"
   }
 ]
