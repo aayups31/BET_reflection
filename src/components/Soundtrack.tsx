@@ -27,6 +27,7 @@ export function Soundtrack() {
   const continuePlaying = useRef(false);
   const crossfading = useRef(false);
   const fadeFrame = useRef<number | null>(null);
+  const transitionId = useRef(0);
   const [open, setOpen] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [index, setIndex] = useState(0);
@@ -51,10 +52,30 @@ export function Soundtrack() {
   }, [getDeck]);
 
   const stopFadeFrame = useCallback(() => {
+    transitionId.current += 1;
     if (fadeFrame.current !== null) cancelAnimationFrame(fadeFrame.current);
     fadeFrame.current = null;
     crossfading.current = false;
   }, []);
+
+  const retargetActiveFade = useCallback(() => {
+    const deckA = getDeck(0);
+    const deckB = getDeck(1);
+    if (!deckA || !deckB) return;
+
+    const keeperDeck: 0 | 1 = deckA.volume >= deckB.volume ? 0 : 1;
+    const discardedDeck = (1 - keeperDeck) as 0 | 1;
+    const keeper = getDeck(keeperDeck);
+    const discarded = getDeck(discardedDeck);
+
+    stopFadeFrame();
+    if (discarded) {
+      discarded.pause();
+      discarded.volume = 0;
+    }
+    if (keeper) keeper.volume = 1;
+    activeDeck.current = keeperDeck;
+  }, [getDeck, stopFadeFrame]);
 
   const selectWithoutPlayback = useCallback((nextIndex: number) => {
     stopFadeFrame();
@@ -77,16 +98,30 @@ export function Soundtrack() {
     if (!outgoing || !incoming) return;
 
     crossfading.current = true;
+    const fadeId = transitionId.current + 1;
+    transitionId.current = fadeId;
+    const alreadyPreloaded = deckTracks.current[incomingDeck] === nextIndex
+      && incoming.src.endsWith(TRACKS[nextIndex].file);
     incoming.pause();
-    incoming.src = TRACKS[nextIndex].file;
-    incoming.currentTime = 0;
+    if (!alreadyPreloaded) {
+      incoming.src = TRACKS[nextIndex].file;
+      incoming.load();
+    }
+    try {
+      incoming.currentTime = 0;
+    } catch {
+      // Browsers can reject seeking until the newly selected file has metadata.
+    }
     incoming.volume = 0;
-    incoming.load();
     deckTracks.current[incomingDeck] = nextIndex;
+    currentIndex.current = nextIndex;
+    setIndex(nextIndex);
+    setMessage(`Crossfading into ${TRACKS[nextIndex].title}.`);
 
     try {
       await incoming.play();
     } catch {
+      if (fadeId !== transitionId.current) return;
       crossfading.current = false;
       outgoing.pause();
       outgoing.src = TRACKS[nextIndex].file;
@@ -109,15 +144,15 @@ export function Soundtrack() {
       return;
     }
 
+    if (fadeId !== transitionId.current) return;
+
     activeDeck.current = incomingDeck;
-    currentIndex.current = nextIndex;
-    setIndex(nextIndex);
     setPlaying(true);
-    setMessage(`Crossfading into ${TRACKS[nextIndex].title}.`);
     const startedAt = performance.now();
     const outgoingStartVolume = outgoing.volume;
 
     const updateFade = (now: number) => {
+      if (fadeId !== transitionId.current) return;
       const progress = Math.min(1, (now - startedAt) / CROSSFADE_MS);
       outgoing.volume = Math.max(0, Math.cos(progress * Math.PI * 0.5) * outgoingStartVolume);
       incoming.volume = Math.min(1, Math.sin(progress * Math.PI * 0.5));
@@ -204,8 +239,12 @@ export function Soundtrack() {
 
   function move(direction: number) {
     const nextIndex = (currentIndex.current + direction + TRACKS.length) % TRACKS.length;
-    if (continuePlaying.current) void crossfadeTo(nextIndex);
-    else selectWithoutPlayback(nextIndex);
+    if (continuePlaying.current) {
+      if (crossfading.current) retargetActiveFade();
+      void crossfadeTo(nextIndex);
+      return;
+    }
+    selectWithoutPlayback(nextIndex);
   }
 
   function handleTimeUpdate(deck: 0 | 1) {
