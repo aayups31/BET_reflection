@@ -3322,3 +3322,32 @@ html[data-motion-ready="true"] .quote-stage .reveal {
     font-size: clamp(3.3rem, 11vh, 6.2rem);
   }
 }
+
+/* Large Helvetica glyphs can extend a few pixels beyond their measured box.
+   Keep real ink room around the animated titles and gradient-clipped numbers. */
+.chapter-intro h1 {
+  box-sizing: content-box;
+  overflow: visible;
+  padding-inline: 0.06em 0.1em;
+  padding-block: 0.08em 0.15em;
+  margin-inline: -0.06em -0.1em;
+}
+
+.ratio-stage span,
+.next-chapter a span {
+  box-sizing: content-box;
+  overflow: visible;
+  padding-inline: 0.06em 0.11em;
+  margin-inline: -0.06em -0.11em;
+  background-origin: border-box;
+}
+
+.pull-quote {
+  box-sizing: content-box;
+  overflow: visible;
+  padding-inline: 0.045em 0.08em;
+  padding-block: 0.08em 0.2em;
+  margin-inline: -0.045em -0.08em;
+  line-height: 1.08;
+  background-origin: border-box;
+}
