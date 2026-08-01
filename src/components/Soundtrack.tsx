@@ -15,28 +15,28 @@ const TRACKS: Track[] = [
     title: 'Can You Hear The Music',
     artist: 'Hans Zimmer',
     file: '/audio/can-you-hear-the-music.mp3',
-    cueOut: 102,
+    
   },
   {
     title: 'Cornfield Chase',
     artist: 'Hans Zimmer',
     file: '/audio/cornfield-chase.mp3',
-    cueIn: 34,
-    cueOut: 120,
+    cueIn: 24,
+    
   },
   {
     title: 'No Time for Caution',
     artist: 'Hans Zimmer',
     file: '/audio/no-time-for-caution.mp3',
-    cueIn: 60,
-    cueOut: 238.5,
+    cueIn: 30,
+    
   },
   {
     title: 'Time',
     artist: 'Hans Zimmer',
     file: '/audio/time.mp3',
     cueIn: 5,
-    cueOut: 274.5,
+    
   },
 ];
 
